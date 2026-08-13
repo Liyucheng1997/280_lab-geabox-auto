@@ -1,0 +1,18 @@
+{
+  "name": "gearbox-visualization",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "手动挡/自动挡换挡原理 Three.js 交互式教学演示",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

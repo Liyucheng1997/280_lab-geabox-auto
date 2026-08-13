@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>手动挡与自动挡换挡原理 · Three.js 交互演示</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 顶栏 -->
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-icon">⚙</span>
+        <span class="brand-name">换挡原理实验室</span>
+        <span class="brand-sub">发动机 · 离合器 · 变速箱 动力学演示</span>
+      </div>
+      <nav id="tabs">
+        <button class="tab active" data-mode="why">① 为什么要换挡</button>
+        <button class="tab" data-mode="manual">② 手动换挡过程</button>
+        <button class="tab" data-mode="auto">③ 自动挡原理</button>
+      </nav>
+      <div class="top-actions">
+        <label class="chk"><input type="checkbox" id="toggle-labels" checked />标注</label>
+        <label class="chk"><input type="checkbox" id="toggle-housing" checked />壳体</label>
+        <label class="chk"><input type="checkbox" id="toggle-spin" checked />运转</label>
+      </div>
+    </header>
+
+    <!-- 3D 视口 -->
+    <main id="viewport">
+      <canvas id="gl"></canvas>
+      <div id="labels"></div>
+
+      <!-- HUD 仪表 -->
+      <div id="hud">
+        <canvas id="gauge-rpm" width="180" height="150"></canvas>
+        <canvas id="gauge-speed" width="180" height="150"></canvas>
+        <div id="hud-gear">
+          <div class="hud-gear-label">挡位</div>
+          <div class="hud-gear-value" id="hud-gear-value">N</div>
+        </div>
+      </div>
+
+      <!-- 场景内提示 -->
+      <div id="scene-toast" class="hidden"></div>
+
+      <!-- 手动换挡时间轴 -->
+      <div id="seq-bar" class="hidden">
+        <button id="seq-play" class="btn-primary">▶ 播放全过程</button>
+        <div id="seq-steps"></div>
+        <div class="seq-speed">
+          <span>速度</span>
+          <select id="seq-rate">
+            <option value="0.35">0.35×（慢）</option>
+            <option value="0.6" selected>0.6×</option>
+            <option value="1">1×</option>
+          </select>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右侧面板 -->
+    <aside id="panel">
+      <!-- ============ 模式一：为什么要换挡 ============ -->
+      <section class="pane" id="pane-why">
+        <h2>为什么需要换挡？</h2>
+        <p class="lead">
+          内燃机只在 <b>800 – 6500 rpm</b> 的窄转速带内工作，最大扭矩只有一个峰值点；
+          而车轮需要的转速从 0 到上千 rpm、需要的扭矩从起步的几千 N·m 到巡航的几百 N·m。
+          <b>变速箱就是扭矩与转速的“变换器”</b>——用不同齿比把发动机的窄工作带映射到车轮的全部需求区间。
+        </p>
+
+        <div class="card">
+          <h3>发动机外特性曲线</h3>
+          <p class="hint">全油门下的扭矩(蓝)与功率(橙)。注意：低转扭矩弱、超过红线断油。</p>
+          <canvas class="chart" id="chart-engine" height="170"></canvas>
+        </div>
+
+        <div class="card">
+          <h3>驱动力 – 车速图（换挡的根本原因）</h3>
+          <p class="hint">
+            每个挡位只能覆盖一小段车速；虚线是行驶阻力。曲线在阻力线以上才能加速。
+            五条曲线拼起来才近似理想的恒功率双曲线。
+          </p>
+          <canvas class="chart" id="chart-traction" height="220"></canvas>
+        </div>
+
+        <div class="card">
+          <h3>发动机转速 – 车速关系</h3>
+          <p class="hint">同一车速下，挡位越低发动机转速越高。阴影为可用转速带：车速提高后低挡会“顶到红线”，必须升挡。</p>
+          <canvas class="chart" id="chart-rpmspeed" height="190"></canvas>
+        </div>
+
+        <div class="card">
+          <h3>亲自试一试</h3>
+          <div class="ctl-row">
+            <span class="ctl-label">油门</span>
+            <input type="range" id="why-throttle" min="0" max="100" value="0" />
+            <span class="ctl-val" id="why-throttle-val">0%</span>
+          </div>
+          <div class="ctl-row">
+            <span class="ctl-label">挡位</span>
+            <div class="gear-btns" id="why-gears">
+              <button data-g="0">N</button><button data-g="1">1</button><button data-g="2">2</button>
+              <button data-g="3">3</button><button data-g="4">4</button><button data-g="5">5</button>
+            </div>
+          </div>
+          <div class="ctl-row">
+            <button id="why-reset" class="btn-ghost">⟲ 重置（停车）</button>
+          </div>
+          <div class="msg" id="why-msg">挂 1 挡、给油起步。留意右图中工作点沿曲线移动。</div>
+          <div class="exp-tips">
+            <b>三个实验：</b>
+            ① 直接挂 5 挡起步 → 驱动力低于阻力，发动机被拖到熄火转速；
+            ② 一直用 1 挡 → 55 km/h 就顶到红线断油；
+            ③ 正常逐挡升挡 → 每次换挡都是把发动机“拉回”扭矩带。
+          </div>
+        </div>
+
+        <div class="card knowledge">
+          <h3>小结</h3>
+          <ul>
+            <li><b>发动机不能从 0 转</b>：起步必须靠离合器滑摩把 0 rpm 的车轮和 ≥800 rpm 的发动机接起来。</li>
+            <li><b>低速需要大扭矩</b>：1 挡总减速比 ≈ 14，扭矩放大 14 倍，轮上驱动力才够克服起步阻力。</li>
+            <li><b>高速需要高转速</b>：若没有 5 挡（超速挡），120 km/h 巡航发动机会转得又快又费油。</li>
+            <li>挡位数越多，越能让发动机停留在<b>高效率区</b>——这也是 8AT/10AT 与 CVT 出现的原因。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 模式二：手动换挡过程 ============ -->
+      <section class="pane hidden" id="pane-manual">
+        <h2>手动换挡的完整过程</h2>
+        <p class="lead">
+          场景为纵置后驱布局的剖视：<b>发动机曲轴 → 飞轮 → 离合器 → 输入轴 → 中间轴 → 输出轴（同步器换挡）→ 传动轴 → 后桥</b>。
+          点击下方播放，观看 2 挡升 3 挡的每一个机械动作。
+        </p>
+
+        <div class="card">
+          <h3>换挡七步（2 挡 → 3 挡）</h3>
+          <ol class="steps" id="manual-steps"></ol>
+        </div>
+
+        <div class="card">
+          <h3>转速匹配（同步器在做什么）</h3>
+          <p class="hint">
+            绿色 = 输出轴上的接合套转速（由车速决定）；蓝色 = 3 挡齿轮的接合齿转速（由输入轴决定）。
+            两者相等的瞬间，接合套才能无冲击地滑入。
+          </p>
+          <canvas class="chart" id="chart-sync" height="170"></canvas>
+        </div>
+
+        <div class="card">
+          <h3>离合器状态</h3>
+          <div class="bars">
+            <div class="bar-row"><span>离合踏板</span><div class="bar"><div id="bar-pedal"></div></div><em id="bar-pedal-v">0%</em></div>
+            <div class="bar-row"><span>压盘夹紧力</span><div class="bar"><div id="bar-clamp"></div></div><em id="bar-clamp-v">100%</em></div>
+            <div class="bar-row"><span>可传扭矩</span><div class="bar"><div id="bar-torque"></div></div><em id="bar-torque-v">100%</em></div>
+          </div>
+          <p class="hint">踩下踏板 → 分离轴承推动膜片弹簧内端 → 杠杆作用使压盘后移 ≈2 mm → 从动盘悬空，动力路径断开。</p>
+        </div>
+
+        <div class="card knowledge">
+          <h3>同步器原理（黄铜环的秘密）</h3>
+          <ul>
+            <li>换挡时目标齿轮的转速 ≠ 输出轴转速，硬推会打齿。</li>
+            <li>接合套先推动<b>黄铜同步环</b>压在齿轮的锥面上，靠<b>锥面摩擦</b>把齿轮拖到同步转速。</li>
+            <li>未同步时，同步环偏转半个齿距<b>锁止</b>接合套（打不进去）；同步完成摩擦力矩消失，环回位，套筒滑过接合齿完成换挡。</li>
+            <li>离合器踩到底是为了切断发动机惯量——同步器只需同步几个齿轮的小惯量，几百毫秒即可完成。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 模式三：自动挡 ============ -->
+      <section class="pane hidden" id="pane-auto">
+        <h2>自动挡如何自动换挡</h2>
+        <p class="lead">
+          AT 用<b>液力变矩器</b>替代离合器（起步永不熄火），用<b>行星齿轮组 + 多片离合器/制动器</b>替代同步器换挡，
+          由 <b>TCU</b> 按“车速 × 油门”查换挡图自动决定何时换。
+        </p>
+
+        <div class="card">
+          <h3>驾驶仿真</h3>
+          <div class="ctl-row">
+            <span class="ctl-label">油门</span>
+            <input type="range" id="auto-throttle" min="0" max="100" value="0" />
+            <span class="ctl-val" id="auto-throttle-val">0%</span>
+          </div>
+          <div class="ctl-row">
+            <button id="auto-brake" class="btn-ghost">🛑 按住刹车</button>
+            <button id="auto-kick" class="btn-ghost">⚡ 地板油(强制降挡)</button>
+          </div>
+          <div class="msg" id="auto-msg">给油起步。观察换挡图上的工作点穿越换挡线。</div>
+        </div>
+
+        <div class="card">
+          <h3>TCU 换挡图（换挡决策的核心）</h3>
+          <p class="hint">
+            实线 = 升挡线，虚线 = 降挡线（两者间距为<b>迟滞区</b>，防止来回跳挡）。
+            油门越深，升挡点越晚——这就是“地板油降挡”的原理。
+          </p>
+          <canvas class="chart" id="chart-shiftmap" height="210"></canvas>
+        </div>
+
+        <div class="card">
+          <h3>执行元件状态</h3>
+          <p class="hint">TCU 通过液压控制离合器(C)与制动器(B)的组合来选择行星轮系的传动路线（主行星排 + OD 超速排）：</p>
+          <table class="clutch-table" id="clutch-table">
+            <thead><tr><th>挡位</th><th>C1<br><small>输入→太阳轮</small></th><th>C3<br><small>输入→齿圈</small></th><th>B1<br><small>刹太阳轮</small></th><th>B2<br><small>刹齿圈</small></th><th>C-od<br><small>OD排锁死</small></th><th>B-od<br><small>刹OD太阳轮</small></th><th>速比</th></tr></thead>
+            <tbody>
+              <tr data-g="1"><td>1</td><td class="on">●</td><td></td><td></td><td class="on">●</td><td class="on">●</td><td></td><td>3.00</td></tr>
+              <tr data-g="2"><td>2</td><td></td><td class="on">●</td><td class="on">●</td><td></td><td class="on">●</td><td></td><td>1.50</td></tr>
+              <tr data-g="3"><td>3</td><td class="on">●</td><td class="on">●</td><td></td><td></td><td class="on">●</td><td></td><td>1.00</td></tr>
+              <tr data-g="4"><td>4</td><td class="on">●</td><td class="on">●</td><td></td><td></td><td></td><td class="on">●</td><td>0.67</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>液力变矩器特性</h3>
+          <p class="hint">速比=涡轮转速/泵轮转速。起步时速比≈0，扭矩被放大近 2 倍；高速时锁止离合器闭合，效率≈100%。</p>
+          <canvas class="chart" id="chart-converter" height="170"></canvas>
+        </div>
+
+        <div class="card">
+          <h3>行星齿轮原理演示</h3>
+          <p class="hint">固定/驱动不同构件即可得到不同速比——不用移动任何齿轮，换挡只是切换“谁被刹住”。</p>
+          <div class="gear-btns planetary-btns" id="planetary-modes">
+            <button data-m="reduce" class="active">1挡·大减速 3.00</button>
+            <button data-m="reduce2">2挡·小减速 1.50</button>
+            <button data-m="lock">3挡·直接 1.00</button>
+            <button data-m="od">4挡·超速 0.67</button>
+            <button data-m="reverse">R挡·反转 −2.00</button>
+          </div>
+          <div class="msg" id="planetary-msg"></div>
+        </div>
+
+        <div class="card knowledge">
+          <h3>手动 vs 自动 · 核心对照</h3>
+          <table class="vs-table">
+            <tr><th></th><th>手动 MT</th><th>自动 AT</th></tr>
+            <tr><td>起步元件</td><td>摩擦离合器(人控滑摩)</td><td>液力变矩器(油液传力)</td></tr>
+            <tr><td>换挡元件</td><td>同步器+接合套(移动)</td><td>离合器/制动器(不移动)</td></tr>
+            <tr><td>换挡决策</td><td>驾驶员大脑</td><td>TCU 查换挡图</td></tr>
+            <tr><td>动力中断</td><td>有(踩离合)</td><td>几乎无(重叠换挡)</td></tr>
+          </table>
+        </div>
+      </section>
+    </aside>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
